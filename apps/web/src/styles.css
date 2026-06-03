@@ -1,0 +1,42 @@
+
+@import "tailwindcss";
+
+:root {
+  font-family:
+    "Avenir Next", "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+  --app-bg: #eef1ed;
+  --paper: #fbfaf4;
+  --panel: #f3f0e7;
+  --panel-strong: #e7e2d6;
+  --ink: #22251f;
+  --ink-soft: #3b3f36;
+  --muted: #72786c;
+  --line: #d5d0c2;
+  --accent: #0f7b6c;
+  --success: #29965f;
+  --ring: rgb(15 123 108 / 0.22);
+  --danger: #9f2f25;
+  --danger-bg: #fff0ed;
+  --danger-line: #f1b8af;
+  --shadow: 0 24px 70px rgb(45 48 42 / 0.13);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--app-bg);
+}
+
+button,
+textarea {
+  font: inherit;
+}

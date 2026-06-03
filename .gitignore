@@ -1,0 +1,16 @@
+node_modules
+.DS_Store
+.env
+.env.*
+!.env.example
+dist
+.output
+.vinxi
+.tanstack
+coverage
+*.tsbuildinfo
+apps/web/src/routeTree.gen.ts
+
+# files
+assignment.txt
+plan.md
