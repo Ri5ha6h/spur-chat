@@ -13,6 +13,13 @@ const SYSTEM_PROMPT = [
   "Do not invent order status, tracking numbers, discounts, or account-specific information.",
 ].join(" ");
 
+const TITLE_SYSTEM_PROMPT = [
+  "Create a concise title for this support conversation.",
+  "Return only the title.",
+  "Use 50 characters or fewer.",
+  "Do not include quotes or punctuation at the end.",
+].join(" ");
+
 function faqPrompt(faqs: { question: string; answer: string }[]) {
   return [
     "Store FAQ and policy context:",
@@ -74,6 +81,41 @@ export function createTanStackLlmService(config: AppConfig): LlmService {
             }
 
             throw new Error("LLM returned an empty response.");
+          } finally {
+          clearTimeout(timeout);
+        }
+      },
+      catch: (error) => error,
+      }),
+
+    generateConversationTitle: ({ messages }) =>
+      Effect.tryPromise({
+        try: async () => {
+          const abortController = new AbortController();
+          const timeout = setTimeout(
+            () => abortController.abort(),
+            config.LLM_TIMEOUT_MS,
+          );
+
+          try {
+            const transcript = messages
+              .map((message) => `${message.sender}: ${message.text}`)
+              .join("\n");
+            const result = await chat({
+              adapter: createAdapter(config),
+              systemPrompts: [TITLE_SYSTEM_PROMPT],
+              messages: [{ role: "user" as const, content: transcript }],
+              stream: false,
+              abortController,
+              temperature: 0.1,
+              maxTokens: 24,
+            });
+
+            if (typeof result === "string" && result.trim()) {
+              return result.trim();
+            }
+
+            throw new Error("LLM returned an empty title.");
           } finally {
             clearTimeout(timeout);
           }

@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { loadConfig } from "./config.js";
 import { createTanStackLlmService } from "./llm/tanstack.js";
 import {
+  createChatUserRepository,
   createConversationRepository,
   createFaqRepository,
 } from "./repositories/drizzle.js";
@@ -17,6 +18,7 @@ export async function createRuntime() {
     config,
     pool,
     services: {
+      chatUsers: createChatUserRepository(db),
       conversations: createConversationRepository(db),
       faqs: createFaqRepository(db),
       llm: createTanStackLlmService(config),

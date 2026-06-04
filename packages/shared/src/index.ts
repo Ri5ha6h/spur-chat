@@ -28,14 +28,38 @@ export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
 export const sendMessageResponseSchema = z.object({
   reply: z.string(),
   sessionId: z.uuid(),
+  conversationName: z.string(),
 });
 export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;
 
 export const historyResponseSchema = z.object({
   sessionId: z.uuid(),
+  conversationName: z.string(),
   messages: z.array(chatMessageSchema),
 });
 export type HistoryResponse = z.infer<typeof historyResponseSchema>;
+
+export const recentConversationSchema = z.object({
+  sessionId: z.uuid(),
+  conversationName: z.string(),
+  updatedAt: z.iso.datetime(),
+});
+export type RecentConversation = z.infer<typeof recentConversationSchema>;
+
+export const recentConversationsResponseSchema = z.object({
+  conversations: z.array(recentConversationSchema),
+});
+export type RecentConversationsResponse = z.infer<
+  typeof recentConversationsResponseSchema
+>;
+
+export const chatQuotaResponseSchema = z.object({
+  messagesRemaining: z.number().int().nonnegative(),
+  messagesPerMinute: z.number().int().positive(),
+  dailyTokensRemaining: z.number().int().nonnegative(),
+  dailyTokenLimit: z.number().int().positive(),
+});
+export type ChatQuotaResponse = z.infer<typeof chatQuotaResponseSchema>;
 
 export const healthResponseSchema = z.object({
   ok: z.literal(true),
@@ -45,6 +69,7 @@ export type HealthResponse = z.infer<typeof healthResponseSchema>;
 export const apiErrorCodeSchema = z.enum([
   "bad_request",
   "not_found",
+  "rate_limited",
   "validation_error",
   "internal_error",
 ]);
@@ -59,4 +84,5 @@ export const apiErrorResponseSchema = z.object({
 export type ApiErrorResponse = z.infer<typeof apiErrorResponseSchema>;
 
 export const MAX_MESSAGE_LENGTH = 2000;
-export const CHAT_SESSION_STORAGE_KEY = "spur.chat.sessionId";
+export const CHAT_SESSION_STORAGE_KEY = "spur.chat.activeSession";
+export const LEGACY_CHAT_SESSION_STORAGE_KEY = "spur.chat.sessionId";

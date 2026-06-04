@@ -1,8 +1,12 @@
 import {
+  chatQuotaResponseSchema,
   historyResponseSchema,
+  recentConversationsResponseSchema,
   sendMessageResponseSchema,
   type ApiErrorResponse,
+  type ChatQuotaResponse,
   type HistoryResponse,
+  type RecentConversationsResponse,
   type SendMessageResponse,
 } from "@spur/shared";
 import { Effect } from "effect";
@@ -59,5 +63,36 @@ export function fetchChatHistory(
       error instanceof Error
         ? error
         : new Error("Could not restore the conversation."),
+  });
+}
+
+export function fetchRecentConversations(): Effect.Effect<
+  RecentConversationsResponse,
+  Error
+> {
+  return Effect.tryPromise({
+    try: async () => {
+      const response = await fetch(`${API_BASE_URL}/chat/recent`);
+      return parseJson(response, (value) =>
+        recentConversationsResponseSchema.parse(value),
+      );
+    },
+    catch: (error) =>
+      error instanceof Error
+        ? error
+        : new Error("Could not load recent conversations."),
+  });
+}
+
+export function fetchChatQuota(): Effect.Effect<ChatQuotaResponse, Error> {
+  return Effect.tryPromise({
+    try: async () => {
+      const response = await fetch(`${API_BASE_URL}/chat/quota`);
+      return parseJson(response, (value) => chatQuotaResponseSchema.parse(value));
+    },
+    catch: (error) =>
+      error instanceof Error
+        ? error
+        : new Error("Could not load chat quota."),
   });
 }

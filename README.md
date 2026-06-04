@@ -39,7 +39,7 @@ Mini AI support agent for a live chat widget. It uses a TanStack Start React fro
 
    ```sh
    LLM_PROVIDER=openrouter
-   LLM_MODEL=openai/gpt-5-mini
+   LLM_MODEL=google/gemini-3.1-flash-lite
    ```
 
    For OpenAI directly:
@@ -78,7 +78,7 @@ pnpm db:seed
 The repo is a pnpm monorepo:
 
 - `apps/web`: TanStack Start app with a single live chat surface. It keeps the current session in localStorage, fetches history on reload, handles validation/API errors, and disables input while a reply is pending.
-- `apps/api`: Hono API server. Routes validate input with shared Zod schemas and run use cases through Effect. The backend persists the user message, calls the LLM service, persists the AI response, and returns a typed JSON payload.
+- `apps/api`: Hono API server. Routes validate input with shared Zod schemas and run use cases through Effect. The backend enforces per-IP limits, persists the user message, calls the LLM service, persists the AI response, and returns a typed JSON payload.
 - `packages/shared`: API schemas, DTO types, and error codes shared by web and API.
 - `packages/db`: Drizzle schema, migration config, and FAQ seed script.
 
@@ -96,6 +96,10 @@ The prompt includes:
 - The latest 12 conversation messages.
 
 The backend has no automatic retry to avoid surprise duplicate cost. If the provider fails or times out, the API returns a friendly fallback message and persists it as the AI response.
+
+## Limits
+
+The API stores raw requester IP addresses in `chat_users` for lightweight dev-phase guardrails. By default it enforces 8 messages per minute and 15,000 estimated support-reply tokens per day per IP. Set `TRUST_PROXY=true` only when the API is deployed behind a trusted proxy so `X-Forwarded-For` can be used safely.
 
 ## Deployment
 
@@ -126,7 +130,7 @@ Set `WEB_ORIGIN` on Render to the deployed Vercel URL.
 
 - Replies are non-streaming for v1. This keeps the contract simple and robust for a weekend take-home.
 - FAQ retrieval is a deterministic DB seed, not vector search. That is enough for the assignment and easier to inspect.
-- No auth is included. Session IDs are opaque UUIDs stored in localStorage.
+- No auth is included. Session IDs are opaque UUIDs stored in localStorage with the active conversation name.
 
 ## If I Had More Time
 

@@ -1,15 +1,31 @@
 import {
   CHAT_SESSION_STORAGE_KEY,
+  LEGACY_CHAT_SESSION_STORAGE_KEY,
   MAX_MESSAGE_LENGTH,
+  type ChatQuotaResponse,
   type ChatMessage,
+  type RecentConversation,
 } from "@spur/shared";
 import { Effect } from "effect";
-import { Bot, Loader2, RotateCcw, Send, UserRound } from "lucide-react";
+import {
+  Bot,
+  Info,
+  Loader2,
+  MessageSquareText,
+  Plus,
+  Send,
+  UserRound,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert } from "#/components/ui/alert";
 import { Button } from "#/components/ui/button";
 import { Textarea } from "#/components/ui/textarea";
-import { fetchChatHistory, sendChatMessage } from "#/lib/api";
+import {
+  fetchChatQuota,
+  fetchChatHistory,
+  fetchRecentConversations,
+  sendChatMessage,
+} from "#/lib/api";
 import { cn } from "#/lib/utils";
 
 const EXAMPLES = [
@@ -17,6 +33,11 @@ const EXAMPLES = [
   "Do you ship to the USA?",
   "My item arrived damaged. What should I do?",
 ];
+
+type ActiveChatSession = {
+  sessionId: string;
+  conversationName: string;
+};
 
 function createOptimisticMessage(sender: "user" | "ai", text: string) {
   return {
@@ -27,10 +48,48 @@ function createOptimisticMessage(sender: "user" | "ai", text: string) {
   } satisfies ChatMessage;
 }
 
+function readActiveChatSession() {
+  try {
+    const value = localStorage.getItem(CHAT_SESSION_STORAGE_KEY);
+
+    if (!value) return undefined;
+
+    const parsed = JSON.parse(value) as ActiveChatSession;
+
+    if (
+      typeof parsed?.sessionId === "string" &&
+      typeof parsed.conversationName === "string"
+    ) {
+      return parsed;
+    }
+
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeActiveChatSession(session: ActiveChatSession) {
+  localStorage.setItem(
+    CHAT_SESSION_STORAGE_KEY,
+    JSON.stringify(session),
+  );
+}
+
+function clearStoredActiveChatSession() {
+  localStorage.removeItem(CHAT_SESSION_STORAGE_KEY);
+  localStorage.removeItem(LEGACY_CHAT_SESSION_STORAGE_KEY);
+}
+
 export function ChatPanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string | undefined>();
+  const [conversationName, setConversationName] = useState<
+    string | undefined
+  >();
+  const [recentSessions, setRecentSessions] = useState<RecentConversation[]>([]);
+  const [quota, setQuota] = useState<ChatQuotaResponse | undefined>();
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -47,8 +106,31 @@ export function ChatPanel() {
     return `${messages.length} message${messages.length === 1 ? "" : "s"}`;
   }, [isLoadingHistory, messages.length]);
 
+  const loadRecentConversations = useCallback(async () => {
+    try {
+      const recent = await Effect.runPromise(fetchRecentConversations());
+      setRecentSessions(recent.conversations);
+    } catch {
+      setRecentSessions([]);
+    }
+  }, []);
+
+  const loadChatQuota = useCallback(async () => {
+    try {
+      const nextQuota = await Effect.runPromise(fetchChatQuota());
+      setQuota(nextQuota);
+    } catch {
+      setQuota(undefined);
+    }
+  }, []);
+
   useEffect(() => {
-    const storedSessionId = localStorage.getItem(CHAT_SESSION_STORAGE_KEY);
+    void loadRecentConversations();
+    void loadChatQuota();
+
+    const storedSession = readActiveChatSession();
+    const legacySessionId = localStorage.getItem(LEGACY_CHAT_SESSION_STORAGE_KEY);
+    const storedSessionId = storedSession?.sessionId ?? legacySessionId ?? undefined;
 
     if (!storedSessionId) {
       setIsLoadingHistory(false);
@@ -58,13 +140,19 @@ export function ChatPanel() {
     Effect.runPromise(fetchChatHistory(storedSessionId))
       .then((history) => {
         setSessionId(history.sessionId);
+        setConversationName(history.conversationName);
         setMessages(history.messages);
+        writeActiveChatSession({
+          sessionId: history.sessionId,
+          conversationName: history.conversationName,
+        });
+        localStorage.removeItem(LEGACY_CHAT_SESSION_STORAGE_KEY);
       })
       .catch(() => {
-        localStorage.removeItem(CHAT_SESSION_STORAGE_KEY);
+        clearStoredActiveChatSession();
       })
       .finally(() => setIsLoadingHistory(false));
-  }, []);
+  }, [loadChatQuota, loadRecentConversations]);
 
   useEffect(() => {
     if (messages.length > 0 || isSending) {
@@ -94,7 +182,13 @@ export function ChatPanel() {
         );
 
         setSessionId(response.sessionId);
-        localStorage.setItem(CHAT_SESSION_STORAGE_KEY, response.sessionId);
+        setConversationName(response.conversationName);
+        writeActiveChatSession({
+          sessionId: response.sessionId,
+          conversationName: response.conversationName,
+        });
+        void loadRecentConversations();
+        void loadChatQuota();
         setMessages((current) => [
           ...current,
           createOptimisticMessage("ai", response.reply),
@@ -105,68 +199,117 @@ export function ChatPanel() {
             ? sendError.message
             : "Could not send your message.",
         );
+        void loadChatQuota();
       } finally {
         setIsSending(false);
       }
     },
-    [isSending, sessionId],
+    [isSending, loadChatQuota, loadRecentConversations, sessionId],
   );
 
-  const resetConversation = useCallback(() => {
-    localStorage.removeItem(CHAT_SESSION_STORAGE_KEY);
+  const startNewConversation = useCallback(() => {
+    clearStoredActiveChatSession();
     setSessionId(undefined);
+    setConversationName(undefined);
     setMessages([]);
     setInput("");
     setError(undefined);
   }, []);
 
+  const selectRecentSession = useCallback(async (selectedSessionId: string) => {
+    if (!selectedSessionId) return;
+
+    setIsLoadingHistory(true);
+    setError(undefined);
+    setInput("");
+
+    try {
+      const history = await Effect.runPromise(
+        fetchChatHistory(selectedSessionId),
+      );
+
+      setSessionId(history.sessionId);
+      setConversationName(history.conversationName);
+      setMessages(history.messages);
+      writeActiveChatSession({
+        sessionId: history.sessionId,
+        conversationName: history.conversationName,
+      });
+      void loadRecentConversations();
+    } catch (historyError) {
+      clearStoredActiveChatSession();
+      setSessionId(undefined);
+      setConversationName(undefined);
+      setMessages([]);
+      setError(
+        historyError instanceof Error
+          ? historyError.message
+          : "Could not restore that chat.",
+      );
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, [loadRecentConversations]);
+
   return (
     <main className="min-h-screen bg-[var(--app-bg)] px-4 py-6 text-[var(--ink)] sm:px-6 lg:px-8">
-      <section className="mx-auto grid min-h-[calc(100vh-3rem)] w-full max-w-6xl grid-cols-1 gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="flex flex-col justify-between border border-[var(--line)] bg-[var(--panel)] p-5 shadow-[var(--shadow)]">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">
-              Spur support lab
-            </p>
-            <h1 className="mt-4 max-w-64 text-3xl font-semibold leading-tight text-[var(--ink)]">
-              Live chat that remembers the thread.
-            </h1>
-            <p className="mt-4 text-sm leading-6 text-[var(--muted)]">
-              Ask about shipping, returns, support hours, cancellations, or
-              damaged deliveries. The agent answers from seeded store policy.
-            </p>
-          </div>
-
-          <div className="mt-8 space-y-3">
-            <div className="rounded-md border border-[var(--line)] bg-[var(--paper)] p-3">
-              <p className="text-xs font-medium uppercase tracking-[0.14em] text-[var(--muted)]">
-                Session
-              </p>
-              <p className="mt-2 break-all text-sm font-medium">
-                {sessionId ?? "Not started"}
-              </p>
-            </div>
-            <Button
-              className="w-full justify-between"
-              disabled={isSending}
-              onClick={resetConversation}
-              variant="secondary"
-            >
-              New chat
-              <RotateCcw className="size-4" />
-            </Button>
-          </div>
-        </aside>
-
-        <section className="flex min-h-[720px] flex-col border border-[var(--line)] bg-[var(--paper)] shadow-[var(--shadow)]">
+      <section className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-4xl">
+        <section className="flex min-h-[720px] w-full flex-col border border-[var(--line)] bg-[var(--paper)] shadow-[var(--shadow)]">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3 sm:px-5">
-            <div>
-              <p className="text-sm font-semibold">AI support agent</p>
-              <p className="text-xs text-[var(--muted)]">{transcriptLabel}</p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold">Spur AI Support Agent</p>
+                <div className="group relative grid size-7 place-items-center">
+                  <Info
+                    aria-hidden="true"
+                    className="size-4 text-[var(--muted)]"
+                  />
+                  <span className="pointer-events-none absolute left-1/2 top-8 z-10 hidden w-64 -translate-x-1/2 rounded-md border border-[var(--line)] bg-[var(--ink)] px-3 py-2 text-xs font-medium leading-5 text-[var(--paper)] shadow-lg group-hover:block">
+                    Answers store support questions using Spur policy context
+                    and keeps recent chats available for this IP.
+                  </span>
+                  <span className="sr-only">
+                    Answers store support questions using Spur policy context
+                    and keeps recent chats available for this IP.
+                  </span>
+                </div>
+              </div>
+              <p className="text-xs text-[var(--muted)]">
+                {conversationName ?? transcriptLabel}
+              </p>
             </div>
-            <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-              <span className="size-2 rounded-full bg-[var(--success)]" />
-              Ready
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              <label className="sr-only" htmlFor="recent-session">
+                Recent chats
+              </label>
+              <div className="relative min-w-0 flex-1 sm:w-56 sm:flex-none">
+                <MessageSquareText className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--muted)]" />
+                <select
+                  className="h-10 w-full appearance-none rounded-md border border-[var(--line)] bg-[var(--panel)] py-2 pl-9 pr-8 text-sm font-medium text-[var(--ink)] outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isSending || isLoadingHistory}
+                  id="recent-session"
+                  onChange={(event) => {
+                    void selectRecentSession(event.target.value);
+                  }}
+                  value={sessionId ?? ""}
+                >
+                  <option value="">Recent chats</option>
+                  {recentSessions.map((session) => (
+                    <option key={session.sessionId} value={session.sessionId}>
+                      {session.conversationName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button
+                aria-label="Start new chat"
+                disabled={isSending || isLoadingHistory}
+                onClick={startNewConversation}
+                size="icon"
+                variant="secondary"
+              >
+                <Plus className="size-4" />
+              </Button>
             </div>
           </header>
 
@@ -253,7 +396,7 @@ export function ChatPanel() {
           <footer className="border-t border-[var(--line)] bg-[var(--panel)] p-4 sm:p-5">
             {error ? <Alert className="mb-3">{error}</Alert> : null}
             <form
-              className="flex items-end gap-3"
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3"
               onSubmit={(event) => {
                 event.preventDefault();
                 void sendMessage(input);
@@ -271,21 +414,34 @@ export function ChatPanel() {
                       void sendMessage(input);
                     }
                   }}
-                  placeholder="Ask about returns, shipping, support hours..."
+                  placeholder="Ask a support question..."
                   rows={1}
                   value={input}
                 />
                 <p
                   className={cn(
-                    "mt-1 text-right text-xs text-[var(--muted)]",
+                    "mt-1 flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-right text-xs text-[var(--muted)]",
                     remainingChars < 0 && "text-[var(--danger)]",
                   )}
                 >
-                  {remainingChars} characters left
+                  <span>{remainingChars} characters left</span>
+                  {quota ? (
+                    <>
+                      <span>
+                        {quota.messagesRemaining}/{quota.messagesPerMinute}{" "}
+                        messages left
+                      </span>
+                      <span>
+                        {quota.dailyTokensRemaining.toLocaleString()}/
+                        {quota.dailyTokenLimit.toLocaleString()} tokens left
+                      </span>
+                    </>
+                  ) : null}
                 </p>
               </div>
               <Button
                 aria-label="Send message"
+                className="size-11"
                 disabled={!canSend || isLoadingHistory}
                 size="icon"
                 type="submit"

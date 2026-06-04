@@ -8,6 +8,13 @@
       "when": 1780482274794,
       "tag": "0000_mixed_hex",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1780582563587,
+      "tag": "0001_cooing_smiling_tiger",
+      "breakpoints": true
     }
   ]
 }

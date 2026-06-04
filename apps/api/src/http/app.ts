@@ -1,18 +1,27 @@
 import { zValidator } from "@hono/zod-validator";
 import { sendMessageRequestSchema } from "@spur/shared";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { cors } from "hono/cors";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { Cause, Effect, Exit, Option } from "effect";
 import type { AppConfig } from "../config.js";
 import { apiError, toAppError } from "../errors.js";
 import {
+  getChatQuota,
+  getRecentConversations,
   getHistory,
   sendMessage,
   type ChatServices,
 } from "../services/chat-service.js";
 
 type CreateAppInput = {
-  config: Pick<AppConfig, "WEB_ORIGIN">;
+  config: Pick<
+    AppConfig,
+    | "DAILY_TOKEN_LIMIT"
+    | "RATE_LIMIT_MESSAGES_PER_MINUTE"
+    | "TRUST_PROXY"
+    | "WEB_ORIGIN"
+  >;
   services: ChatServices;
 };
 
@@ -31,6 +40,39 @@ async function runJson<T>(
     Option.isSome(failure) ? failure.value : undefined,
   );
   return c.json(apiError(appError.code, appError.message), appError.status);
+}
+
+function forwardedIp(value: string | undefined) {
+  return value
+    ?.split(",")
+    .map((part) => part.trim())
+    .find(Boolean);
+}
+
+function requestIp(c: Context, config: CreateAppInput["config"]) {
+  if (config.TRUST_PROXY) {
+    const ip =
+      forwardedIp(c.req.header("x-forwarded-for")) ??
+      c.req.header("x-real-ip");
+
+    if (ip) return ip;
+  }
+
+  try {
+  return getConnInfo(c).remote.address ?? "local-dev";
+  } catch {
+    return "local-dev";
+  }
+}
+
+function chatRequestContext(c: Context, config: CreateAppInput["config"]) {
+  return {
+    ipAddress: requestIp(c, config),
+    limits: {
+      dailyTokenLimit: config.DAILY_TOKEN_LIMIT,
+      messagesPerMinute: config.RATE_LIMIT_MESSAGES_PER_MINUTE,
+    },
+  };
 }
 
 export function createApp({ config, services }: CreateAppInput) {
@@ -59,8 +101,19 @@ export function createApp({ config, services }: CreateAppInput) {
     }),
     async (c) => {
       const input = c.req.valid("json");
-      return runJson(sendMessage(services, input), c);
+      return runJson(
+        sendMessage(services, input, chatRequestContext(c, config)),
+        c,
+      );
     },
+  );
+
+  app.get("/chat/quota", async (c) =>
+    runJson(getChatQuota(services, chatRequestContext(c, config)), c),
+  );
+
+  app.get("/chat/recent", async (c) =>
+    runJson(getRecentConversations(services, requestIp(c, config)), c),
   );
 
   app.get("/chat/history/:sessionId", async (c) => {

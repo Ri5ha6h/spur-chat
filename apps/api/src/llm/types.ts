@@ -8,6 +8,13 @@ export type GenerateReplyInput = {
   userMessage: string;
 };
 
+export type GenerateConversationTitleInput = {
+  messages: ChatMessage[];
+};
+
 export type LlmService = {
   generateReply: (input: GenerateReplyInput) => Effect.Effect<string, unknown>;
+  generateConversationTitle: (
+    input: GenerateConversationTitleInput,
+  ) => Effect.Effect<string, unknown>;
 };

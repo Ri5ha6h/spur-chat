@@ -9,8 +9,14 @@ const envSchema = z
     PORT: z.coerce.number().int().positive().default(4000),
     DATABASE_URL: z.string().min(1),
     WEB_ORIGIN: z.string().url().default("http://localhost:3000"),
+    TRUST_PROXY: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((value) => value === "true"),
+    RATE_LIMIT_MESSAGES_PER_MINUTE: z.coerce.number().int().positive().default(8),
+    DAILY_TOKEN_LIMIT: z.coerce.number().int().positive().default(15_000),
     LLM_PROVIDER: z.enum(["openrouter", "openai"]).default("openrouter"),
-    LLM_MODEL: z.string().min(1).default("openai/gpt-5-mini"),
+    LLM_MODEL: z.string().min(1).default("google/gemini-3.1-flash-lite"),
     LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
     OPENROUTER_API_KEY: z.string().optional(),
     OPENAI_API_KEY: z.string().optional(),
