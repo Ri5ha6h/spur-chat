@@ -4,3 +4,5 @@ packages:
 allowBuilds:
   '@openrouter/sdk': true
   esbuild: true
+  lightningcss: true
+minimumReleaseAge: 1440
