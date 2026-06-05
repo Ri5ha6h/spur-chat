@@ -258,7 +258,7 @@ export function ChatPanel() {
           <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3 sm:px-5">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold">Spur AI Support Agent</p>
+                <p className="text-sm font-semibold">SpurAI Support Agent</p>
                 <div className="group relative grid size-7 place-items-center">
                   <Info
                     aria-hidden="true"
