@@ -24,7 +24,7 @@ export type ChatLimits = {
 };
 
 export type ChatRequestContext = {
-  ipAddress: string;
+  requesterKey: string;
   limits: ChatLimits;
 };
 
@@ -295,7 +295,7 @@ export function sendMessage(
 ) {
   return Effect.gen(function* () {
     const chatUser = yield* services.chatUsers.findOrCreateByIpAddress(
-      context.ipAddress,
+      context.requesterKey,
     );
     yield* enforceMessageRate(services, chatUser, context.limits);
 
@@ -304,7 +304,15 @@ export function sendMessage(
       : undefined;
 
     const conversation = existingConversation
-      ? existingConversation
+      ? existingConversation.chatUserId === chatUser.id
+        ? existingConversation
+        : yield* Effect.fail(
+            new AppError(
+              "not_found",
+              "Conversation not found. Start a new chat to continue.",
+              404,
+            ),
+          )
       : yield* services.conversations.createConversation(
           chatUser.id,
           yield* createSequentialConversationName(services, chatUser.id),
@@ -364,11 +372,18 @@ export function sendMessage(
   });
 }
 
-export function getHistory(services: ChatServices, sessionId: string) {
+export function getHistory(
+  services: ChatServices,
+  sessionId: string,
+  context: ChatRequestContext,
+) {
   return Effect.gen(function* () {
+    const chatUser = yield* services.chatUsers.findOrCreateByIpAddress(
+      context.requesterKey,
+    );
     const conversation = yield* services.conversations.findConversation(sessionId);
 
-    if (!conversation) {
+    if (!conversation || conversation.chatUserId !== chatUser.id) {
       return yield* Effect.fail(
         new AppError(
           "not_found",
@@ -389,10 +404,12 @@ export function getHistory(services: ChatServices, sessionId: string) {
 
 export function getRecentConversations(
   services: ChatServices,
-  ipAddress: string,
+  context: ChatRequestContext,
 ) {
   return Effect.gen(function* () {
-    const chatUser = yield* services.chatUsers.findOrCreateByIpAddress(ipAddress);
+    const chatUser = yield* services.chatUsers.findOrCreateByIpAddress(
+      context.requesterKey,
+    );
     const conversations = yield* services.conversations.listRecentConversations(
       chatUser.id,
       RECENT_CONVERSATION_LIMIT,
@@ -405,7 +422,7 @@ export function getRecentConversations(
 export function getChatQuota(services: ChatServices, context: ChatRequestContext) {
   return Effect.gen(function* () {
     const chatUser = yield* services.chatUsers.findOrCreateByIpAddress(
-      context.ipAddress,
+      context.requesterKey,
     );
 
     return quotaStatus(chatUser, context.limits);

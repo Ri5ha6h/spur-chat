@@ -1,5 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
-import { sendMessageRequestSchema } from "@spur/shared";
+import { CHAT_CLIENT_ID_HEADER, sendMessageRequestSchema } from "@spur/shared";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { cors } from "hono/cors";
 import { Hono, type Context } from "hono";
@@ -59,15 +59,20 @@ function requestIp(c: Context, config: CreateAppInput["config"]) {
   }
 
   try {
-  return getConnInfo(c).remote.address ?? "local-dev";
+    return getConnInfo(c).remote.address ?? "local-dev";
   } catch {
     return "local-dev";
   }
 }
 
+function requestClientId(c: Context) {
+  const clientId = c.req.header(CHAT_CLIENT_ID_HEADER)?.trim();
+  return clientId && clientId.length <= 100 ? clientId : undefined;
+}
+
 function chatRequestContext(c: Context, config: CreateAppInput["config"]) {
   return {
-    ipAddress: requestIp(c, config),
+    requesterKey: requestClientId(c) ?? requestIp(c, config),
     limits: {
       dailyTokenLimit: config.DAILY_TOKEN_LIMIT,
       messagesPerMinute: config.RATE_LIMIT_MESSAGES_PER_MINUTE,
@@ -82,7 +87,7 @@ export function createApp({ config, services }: CreateAppInput) {
     "*",
     cors({
       origin: [config.WEB_ORIGIN, "http://localhost:3000"],
-      allowHeaders: ["Content-Type"],
+      allowHeaders: ["Content-Type", CHAT_CLIENT_ID_HEADER],
       allowMethods: ["GET", "POST", "OPTIONS"],
       credentials: false,
     }),
@@ -113,7 +118,7 @@ export function createApp({ config, services }: CreateAppInput) {
   );
 
   app.get("/chat/recent", async (c) =>
-    runJson(getRecentConversations(services, requestIp(c, config)), c),
+    runJson(getRecentConversations(services, chatRequestContext(c, config)), c),
   );
 
   app.get("/chat/history/:sessionId", async (c) => {
@@ -123,7 +128,10 @@ export function createApp({ config, services }: CreateAppInput) {
       return c.json(apiError("bad_request", "Session ID is required."), 400);
     }
 
-    return runJson(getHistory(services, sessionId), c);
+    return runJson(
+      getHistory(services, sessionId, chatRequestContext(c, config)),
+      c,
+    );
   });
 
   app.notFound((c) =>

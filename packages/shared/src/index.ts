@@ -86,3 +86,5 @@ export type ApiErrorResponse = z.infer<typeof apiErrorResponseSchema>;
 export const MAX_MESSAGE_LENGTH = 2000;
 export const CHAT_SESSION_STORAGE_KEY = "spur.chat.activeSession";
 export const LEGACY_CHAT_SESSION_STORAGE_KEY = "spur.chat.sessionId";
+export const CHAT_CLIENT_ID_STORAGE_KEY = "spur.chat.clientId";
+export const CHAT_CLIENT_ID_HEADER = "X-Spur-Client-Id";

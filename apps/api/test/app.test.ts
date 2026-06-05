@@ -1,4 +1,8 @@
-import type { ChatMessage, Sender } from "@spur/shared";
+import {
+  CHAT_CLIENT_ID_HEADER,
+  type ChatMessage,
+  type Sender,
+} from "@spur/shared";
 import { Effect } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/http/app.js";
@@ -29,12 +33,20 @@ const TEST_CONFIG = {
   WEB_ORIGIN: "http://localhost:3000",
 };
 
+function chatClientHeaders(clientId: string) {
+  return {
+    "Content-Type": "application/json",
+    [CHAT_CLIENT_ID_HEADER]: clientId,
+  };
+}
+
 function createMemoryServices(options?: {
   llmReply?: string;
   llmError?: boolean;
   title?: string;
 }) {
   let idCounter = 0;
+  let touchCounter = 0;
   let userCounter = 0;
   const conversations = new Map<string, MemoryConversation>();
   const chatUsers = new Map<string, MemoryChatUser>();
@@ -145,7 +157,10 @@ function createMemoryServices(options?: {
         Effect.sync(() => {
           const conversation = conversations.get(conversationId);
           if (conversation) {
-            conversation.updatedAt = new Date();
+            touchCounter += 1;
+            conversation.updatedAt = new Date(
+              Date.UTC(2026, 0, 1, 0, 10, touchCounter),
+            );
           }
         }),
       addMessage: (conversationId, sender: Sender, text) =>
@@ -410,6 +425,83 @@ describe("API app", () => {
       "Chat 2",
       "Chat 1",
     ]);
+  });
+
+  it("does not share recent conversations across browser client IDs", async () => {
+    const memory = createMemoryServices();
+    const app = createApp({
+      config: TEST_CONFIG,
+      services: memory.services,
+    });
+
+    await app.request("/chat/message", {
+      method: "POST",
+      headers: chatClientHeaders("client-a"),
+      body: JSON.stringify({ message: "from client a" }),
+    });
+    await app.request("/chat/message", {
+      method: "POST",
+      headers: chatClientHeaders("client-b"),
+      body: JSON.stringify({ message: "from client b" }),
+    });
+
+    const response = await app.request("/chat/recent", {
+      headers: { [CHAT_CLIENT_ID_HEADER]: "client-a" },
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(
+      body.conversations.map(
+        (conversation: { conversationName: string }) =>
+          conversation.conversationName,
+      ),
+    ).toEqual(["Chat 1"]);
+    expect(memory.chatUsers.size).toBe(2);
+  });
+
+  it("does not allow one browser client to read another client's history", async () => {
+    const memory = createMemoryServices();
+    const app = createApp({
+      config: TEST_CONFIG,
+      services: memory.services,
+    });
+
+    const send = await app.request("/chat/message", {
+      method: "POST",
+      headers: chatClientHeaders("client-a"),
+      body: JSON.stringify({ message: "private message" }),
+    });
+    const { sessionId } = await send.json();
+
+    const response = await app.request(`/chat/history/${sessionId}`, {
+      headers: { [CHAT_CLIENT_ID_HEADER]: "client-b" },
+    });
+
+    expect(response.status).toBe(404);
+  });
+
+  it("does not allow one browser client to append to another client's session", async () => {
+    const memory = createMemoryServices();
+    const app = createApp({
+      config: TEST_CONFIG,
+      services: memory.services,
+    });
+
+    const send = await app.request("/chat/message", {
+      method: "POST",
+      headers: chatClientHeaders("client-a"),
+      body: JSON.stringify({ message: "private message" }),
+    });
+    const { sessionId } = await send.json();
+
+    const response = await app.request("/chat/message", {
+      method: "POST",
+      headers: chatClientHeaders("client-b"),
+      body: JSON.stringify({ sessionId, message: "hijack attempt" }),
+    });
+
+    expect(response.status).toBe(404);
   });
 
   it("returns current quota for the requester IP", async () => {

@@ -1,4 +1,6 @@
 import {
+  CHAT_CLIENT_ID_HEADER,
+  CHAT_CLIENT_ID_STORAGE_KEY,
   CHAT_SESSION_STORAGE_KEY,
   LEGACY_CHAT_SESSION_STORAGE_KEY,
 } from "@spur/shared";
@@ -106,6 +108,14 @@ describe("ChatPanel", () => {
     expect(await screen.findByText("hello")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:4000/chat/history/00000000-0000-4000-8000-000000000123",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          [CHAT_CLIENT_ID_HEADER]: expect.any(String),
+        }),
+      }),
+    );
+    expect(localStorage.getItem(CHAT_CLIENT_ID_STORAGE_KEY)).toEqual(
+      expect.any(String),
     );
     expect(
       screen.queryByText("00000000-0000-4000-8000-000000000123"),

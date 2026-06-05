@@ -266,11 +266,11 @@ export function ChatPanel() {
                   />
                   <span className="pointer-events-none absolute left-1/2 top-8 z-10 hidden w-64 -translate-x-1/2 rounded-md border border-[var(--line)] bg-[var(--ink)] px-3 py-2 text-xs font-medium leading-5 text-[var(--paper)] shadow-lg group-hover:block">
                     Answers store support questions using Spur policy context
-                    and keeps recent chats available for this IP.
+                    and keeps recent chats available for this browser.
                   </span>
                   <span className="sr-only">
                     Answers store support questions using Spur policy context
-                    and keeps recent chats available for this IP.
+                    and keeps recent chats available for this browser.
                   </span>
                 </div>
               </div>

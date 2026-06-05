@@ -78,7 +78,7 @@ pnpm db:seed
 The repo is a pnpm monorepo:
 
 - `apps/web`: TanStack Start app with a single live chat surface. It keeps the current session in localStorage, fetches history on reload, handles validation/API errors, and disables input while a reply is pending.
-- `apps/api`: Hono API server. Routes validate input with shared Zod schemas and run use cases through Effect. The backend enforces per-IP limits, persists the user message, calls the LLM service, persists the AI response, and returns a typed JSON payload.
+- `apps/api`: Hono API server. Routes validate input with shared Zod schemas and run use cases through Effect. The backend enforces per-browser limits when the web client ID is present, persists the user message, calls the LLM service, persists the AI response, and returns a typed JSON payload.
 - `packages/shared`: API schemas, DTO types, and error codes shared by web and API.
 - `packages/db`: Drizzle schema, migration config, and FAQ seed script.
 
@@ -99,7 +99,7 @@ The backend has no automatic retry to avoid surprise duplicate cost. If the prov
 
 ## Limits
 
-The API stores raw requester IP addresses in `chat_users` for lightweight dev-phase guardrails. By default it enforces 8 messages per minute and 15,000 estimated support-reply tokens per day per IP. Set `TRUST_PROXY=true` only when the API is deployed behind a trusted proxy so `X-Forwarded-For` can be used safely.
+The web app stores a browser-local client ID and sends it with chat requests so recent chats and history stay scoped to that browser instead of a shared IP address. If the header is absent, the API falls back to requester IP for lightweight dev-phase guardrails. By default it enforces 8 messages per minute and 15,000 estimated support-reply tokens per day per browser/IP. Set `TRUST_PROXY=true` only when the API is deployed behind a trusted proxy so `X-Forwarded-For` can be used safely.
 
 ## Deployment
 
@@ -108,6 +108,42 @@ Recommended deployment:
 - Vercel for `apps/web`.
 - Render for `apps/api`.
 - Neon or Supabase for PostgreSQL.
+
+Railway settings:
+
+Use separate Railway services for the API and web app. Keep the Railway root
+directory as the repository root so pnpm workspace links resolve correctly, then
+set each service's config file path:
+
+```sh
+API Config File: /railway.api.json
+Web Config File: /railway.web.json
+```
+
+Do not include `pnpm install` in a Railway build command. Railpack already runs
+the install step before the configured build command; adding it again causes
+extra work and worsens cache behavior. The checked-in Railway configs also set
+watch patterns so web-only changes do not redeploy the API and API-only changes
+do not redeploy the web app.
+
+The web app builds in TanStack Start SPA mode and should be served from static
+files. Set this variable on the Railway web service:
+
+```sh
+RAILPACK_SPA_OUTPUT_DIR=.output/public
+```
+
+For smaller Railway runtime images, set these service variables after verifying
+the next deploy:
+
+```sh
+RAILPACK_PRUNE_DEPS=true
+RAILPACK_NODE_PRUNE_CMD=pnpm prune --prod --ignore-scripts
+```
+
+This removes dev dependencies from the final image. If a deploy fails after
+enabling pruning, remove those variables and use the checked-in build/start
+commands only.
 
 Render API settings:
 
