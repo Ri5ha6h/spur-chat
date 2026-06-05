@@ -244,7 +244,7 @@ function ChatHeader({
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3 sm:px-5">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold">Spur AI Support Agent</p>
+          <p className="text-sm font-semibold">SpurAI Support Agent</p>
           <div className="group relative grid size-7 place-items-center">
             <Info aria-hidden="true" className="size-4 text-[var(--muted)]" />
             <span className="pointer-events-none absolute left-1/2 top-8 z-10 hidden w-64 -translate-x-1/2 rounded-md border border-[var(--line)] bg-[var(--ink)] px-3 py-2 text-xs font-medium leading-5 text-[var(--paper)] shadow-lg group-hover:block">
